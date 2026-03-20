@@ -1,13 +1,23 @@
-import os
-from dotenv import load_dotenv
-from sqlmodel import create_engine
+from sqlmodel import create_engine, Session
+from core.config import settings
 
-load_dotenv()
+# connect_args is only needed for SQLite (not thread-safe by default)
+connect_args = {"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
 
-database_url = os.getenv("DATABASE_URL", "").strip()
-if not database_url:
-	raise RuntimeError(
-		"DATABASE_URL is empty. Set it in backend/.env before starting the app."
-	)
+engine = create_engine(
+    settings.DATABASE_URL,
+    echo=settings.DEBUG,          # logs every SQL query when DEBUG=True
+    connect_args=connect_args,
+)
 
-engine = create_engine(database_url, echo=True)
+
+def get_session():
+    """
+    FastAPI dependency — yields a DB session and auto-closes it.
+
+    Usage in a route:
+        def my_route(db: Session = Depends(get_session)):
+            ...
+    """
+    with Session(engine) as session:
+        yield session
