@@ -29,7 +29,10 @@ class URL(SQLModel, table=True):
     click_count: int = Field(default=0)
     
     user: Optional["User"] = Relationship(back_populates="urls")
-    analytics: List["ClickEvent"] = Relationship(back_populates='url')
+    analytics: List["ClickEvent"] = Relationship(
+        back_populates="url",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 # REFRESH TOKEN MODEL
 class RefreshToken(SQLModel, table=True):

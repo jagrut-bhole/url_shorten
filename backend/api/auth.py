@@ -13,8 +13,6 @@ from core.security import (
 from db.database import get_session
 from db.models import RefreshToken, User
 from schemas.user import (
-    ChangePasswordRequest,
-    DeleteAccountRequest,
     LoginRequest,
     MessageResponse,
     RefreshRequest,
@@ -26,7 +24,7 @@ from schemas.user import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Register route
-@router.post("/register", response_model=UserResponse, status_code=201)
+@router.post("/signup", response_model=UserResponse, status_code=201)
 def register(body: RegisterRequest, db: Session = Depends(get_session)):
     # check if user already exists
     existing_user = db.exec(select(User).where(User.email == body.email)).first()
@@ -51,7 +49,7 @@ def register(body: RegisterRequest, db: Session = Depends(get_session)):
 
 
 # Login route
-@router.post("/login", response_model=TokenResponse)
+@router.post("/signin", response_model=TokenResponse)
 def login(body: LoginRequest, db: Session = Depends(get_session)):
     # look if user exists
     user = db.exec(select(User).where(User.email == body.email)).first()

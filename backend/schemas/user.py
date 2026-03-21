@@ -40,6 +40,11 @@ class ChangePasswordRequest(BaseModel):
 
 class DeleteAccountRequest(BaseModel):
     password: str   # require password confirmation before deleting
+    
+    
+class UpdateEmailRequest(BaseModel):
+    new_email: EmailStr
+    password: str
 
 
 # ── Response bodies (what we send back) ───────────────────────────────────────
@@ -48,6 +53,7 @@ class UserResponse(BaseModel):
     id: uuid.UUID
     email: str
     created_at: datetime
+    urls: list = []
 
     model_config = {"from_attributes": True}   # lets us do UserResponse.model_validate(db_user)
 

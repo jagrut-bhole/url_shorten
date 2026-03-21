@@ -19,3 +19,13 @@ class URLResponse(BaseModel):
         
 class URLStats(BaseModel):
     total_clicks: int
+    
+    
+class URLEdit(BaseModel):
+    new_og_url: HttpUrl
+    
+class URLEditResponse(BaseModel):
+    id: UUID
+    new_og_url: HttpUrl
+    short_code: str
+    created_at: datetime
