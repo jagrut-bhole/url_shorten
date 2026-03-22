@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 
 from core.dependencies import get_current_user
 from db.database import get_session
-from db.models import URL, User
+from db.models import URL, User, ClickEvent
 from schemas.url import (
     URLCreate,
     URLResponse,
@@ -22,7 +22,7 @@ from lib.cache import delete_cached_key
 router = APIRouter(prefix="/urls", tags=["urls"])
 
 # user sending route and getting the shortened URL in response
-@router.post("/shorten", response_model=URLResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/shorten",response_model=URLResponse, status_code=status.HTTP_201_CREATED)
 def shorten_url(
     body: URLCreate,
     current_user: User = Depends(get_current_user),
@@ -33,7 +33,7 @@ def shorten_url(
     for _ in range(5):
         code = generate_short_code()
         if not db.exec(select(URL).where(URL.short_code == code)).first():
-            return code
+            break
         
     url = URL(
         original_url=str(body.original_url),
@@ -138,11 +138,7 @@ def edit_url(
         payload = {
             "id": str(url.id),
             "original_url": url.original_url,
-            "short_code": url.short_code,
-            "user_id": str(url.user_id) if url.user_id else None,
-            "created_at": url.created_at.isoformat() if url.created_at else None,
             "expires_at": url.expires_at.isoformat() if url.expires_at else None,
-            "click_count": url.click_count,
         }
         set_cached_data(CacheKeys.url_code(short_code=short_code), payload, CACHE_TTL["URL_CODE"])
         set_cached_data(CacheKeys.url_id(url_id=str(url.id)), payload, CACHE_TTL["URL_ID"])
@@ -158,3 +154,79 @@ def edit_url(
     except Exception as e:
         print(f"Error editing URL: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while editing the URL")
+    
+# Single URL detail
+@router.get("/{short_code}")
+def get_url_detail(
+    short_code: str,
+    db: Session = Depends(get_session),
+    current_user : User = Depends(get_current_user)
+):
+    try:
+        cached_url = get_url_from_cache_short_code(short_code , db)
+        
+        if not cached_url:
+            url = db.exec(select(URL).where(URL.short_code == short_code)).first()
+            
+        else:
+            url = db.get(URL, cached_url.id)
+            
+            if not url:
+                url = db.exec(select(URL).where(URL.short_code == short_code)).first()
+                
+        if not url:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="URL not found")
+        
+        if url.user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You are not authorized to view this URL")
+        
+        url_click_details = db.exec(select(ClickEvent).where(ClickEvent.url_id == url.id)).all()
+        
+        if len(url_click_details) > 0:
+            click_details = []
+            for click in url_click_details:
+                click_details.append({
+                    "clicked_at": click.clicked_at,
+                    "ip_address": click.ip_address,
+                    "user_agent": click.user_agent
+                })
+                
+        payload = {
+            "id": str(url.id),
+            "original_url": url.original_url,
+            "short_code": url.short_code,
+            "user_id": str(url.user_id) if url.user_id else None,
+            "created_at": url.created_at.isoformat() if url.created_at else None,
+            "expires_at": url.expires_at.isoformat() if url.expires_at else None,
+            "click_count": url.click_count,
+            "click_details": click_details if len(url_click_details) > 0 else [],
+            "analytics": url_click_details if len(url_click_details) > 0 else [],
+        }
+        
+        return payload
+    
+    except Exception as e:
+        print(f"Error getting URL detail: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="An error occurred while getting the URL detail")
+    
+# Getting all urls of the user
+@router.get("/", response_model=list[URLResponse], status_code=status.HTTP_200_OK)
+def get_user_urls(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_session),
+):
+    try:
+        user_urls = db.exec(
+            select(URL)
+            .where(URL.user_id == current_user.id)
+            .order_by(URL.created_at.desc())
+        ).all()
+
+        return user_urls
+
+    except Exception as e:
+        print(f"Error getting user urls: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while getting user urls",
+        )

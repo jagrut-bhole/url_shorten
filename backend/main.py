@@ -2,14 +2,12 @@ from fastapi import FastAPI, Request, BackgroundTasks, Depends, HTTPException, s
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from dotenv import load_dotenv
-from sqlmodel import SQLModel, Session, select
+from sqlmodel import SQLModel, Session
 from services.click_service import log_click
 
-import datetime
+from datetime import datetime
 
 from db.database import get_session
-from db.models import URL
- 
 from core.config import settings
 from db.database import engine
  
@@ -61,29 +59,35 @@ async def redirect(
     background_tasks: BackgroundTasks,
     db : Session = Depends(get_session)
 ):
-    cached_url = get_url_from_cache_short_code(short_code, db)
-    
-    if not cached_url:
-        url = db.exec(select(URL).where(URL.short_code == short_code)).first()
-        
-    else:
-        url = db.get(URL, cached_url.id)
-        
-        if not url:
-            url = db.exec(select(URL).where(URL.short_code == short_code)).first()
+    # Cache-first lookup: helper returns from Redis when available,
+    # otherwise it falls back to DB and warms cache.
+    url = get_url_from_cache_short_code(short_code, db)
     
     if not url:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="URL not found")
     
-    if url.expires_at and url.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=410, detail="URL has expired")
+    if isinstance(url, dict):
+        original_url = url["original_url"]
+        expires_at = url.get("expires_at")
+        url_id = url["id"]
+    else:
+        original_url = url.original_url
+        expires_at = url.expires_at
+        url_id = url.id
+    
+    if expires_at:
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at)
+        
+        if expires_at < datetime.utcnow():
+            raise HTTPException(status_code=410, detail="URL has expired")
     
     # Log the click WITHOUT blocking the redirect
     # BackgroundTasks runs AFTER the response is sent, so the user doesn't wait for DB logging
     
-    background_tasks.add_task(log_click, url.id, request, db)
+    background_tasks.add_task(log_click, url_id, request, db)
     
-    return RedirectResponse(url.original_url, status_code=307)
+    return RedirectResponse(original_url, status_code=307)
 
 if __name__ == "__main__":
     import uvicorn

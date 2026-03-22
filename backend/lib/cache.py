@@ -7,10 +7,10 @@ T = TypeVar("T")
 
 CACHE_TTL = {
     "USER": 60 * 60,
-    "URL_CODE": 60 * 30 * 24,
-    "URL_ID": 60 * 30 * 24,
+    "URL_CODE": 60 * 60, # 1 hour for URL code cache
     "URL_CLICK": 60 * 30 * 24,
     "rate_limit": 60 * 30 * 24,
+    "NEGATIVE": 10,  # Short TTL for negative cache entries
 }
 
 class CacheKeys:
